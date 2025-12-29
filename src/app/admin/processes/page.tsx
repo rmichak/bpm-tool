@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import React, { useState } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -19,11 +19,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible'
 import { mockProcesses, mockWorkflows } from '@/lib/mock-data'
 import {
   Plus,
@@ -139,24 +134,21 @@ export default function ProcessesPage() {
               const isExpanded = expandedRows.has(process.id)
 
               return (
-                <Collapsible key={process.id} asChild open={isExpanded}>
-                  <>
-                    <TableRow
-                      className="stagger-item cursor-pointer"
-                      style={{ animationDelay: `${index * 0.05}s` }}
-                      onClick={() => toggleRow(process.id)}
-                    >
-                      <TableCell>
-                        <CollapsibleTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            {isExpanded ? (
-                              <ChevronDown className="h-4 w-4" />
-                            ) : (
-                              <ChevronRight className="h-4 w-4" />
-                            )}
-                          </Button>
-                        </CollapsibleTrigger>
-                      </TableCell>
+                <React.Fragment key={process.id}>
+                  <TableRow
+                    className="stagger-item cursor-pointer"
+                    style={{ animationDelay: `${index * 0.05}s` }}
+                    onClick={() => toggleRow(process.id)}
+                  >
+                    <TableCell>
+                      <Button variant="ghost" size="icon" className="h-8 w-8">
+                        {isExpanded ? (
+                          <ChevronDown className="h-4 w-4" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </TableCell>
                       <TableCell>
                         <div>
                           <p className="font-medium">{process.name}</p>
@@ -213,7 +205,7 @@ export default function ProcessesPage() {
                     </TableRow>
 
                     {/* Expanded Workflows */}
-                    <CollapsibleContent asChild>
+                    {isExpanded && (
                       <tr>
                         <td colSpan={6} className="p-0">
                           <div className="bg-muted/30 border-t border-border px-8 py-4">
@@ -281,9 +273,8 @@ export default function ProcessesPage() {
                           </div>
                         </td>
                       </tr>
-                    </CollapsibleContent>
-                  </>
-                </Collapsible>
+                    )}
+                </React.Fragment>
               )
             })}
           </TableBody>
