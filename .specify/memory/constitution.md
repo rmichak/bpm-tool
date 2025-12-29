@@ -1,50 +1,113 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+<!--
+SYNC IMPACT REPORT
+==================
+Version Change: N/A → 1.0.0 (Initial ratification)
+Modified Principles: N/A (new constitution)
+Added Sections:
+  - Core Principles (3 principles)
+  - Technology Stack section
+  - Development Workflow section
+  - Governance section
+Removed Sections: N/A
+Templates Requiring Updates:
+  - .specify/templates/plan-template.md ✅ (Constitution Check section compatible)
+  - .specify/templates/spec-template.md ✅ (User scenarios align with UX principle)
+  - .specify/templates/tasks-template.md ✅ (Phased delivery aligns with Incremental principle)
+Follow-up TODOs: None
+-->
+
+# ePower BPM Constitution
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. User Experience First
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+Every feature MUST prioritize intuitive, efficient user workflows. This principle governs
+all design and implementation decisions.
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+**Non-Negotiables**:
+- User workflows MUST be mapped and validated before implementation begins
+- Interface complexity MUST be justified by corresponding user value
+- Error states MUST provide actionable guidance, not technical messages
+- Performance degradation visible to users MUST be treated as a blocking defect
+- Accessibility (WCAG 2.1 AA minimum) MUST be considered for all UI components
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+**Rationale**: A BPM tool succeeds only if users can efficiently define, execute, and
+monitor their business processes. Technical excellence without usability delivers no value.
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+### II. Scalable Design
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+Architecture MUST support horizontal scaling, high concurrency, and background service
+reliability from the initial implementation.
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+**Non-Negotiables**:
+- Database operations MUST be designed for concurrent access and connection pooling
+- Background services (polling, event processing) MUST be stateless or use distributed state
+- API endpoints MUST support rate limiting and graceful degradation under load
+- Long-running operations MUST be asynchronous with progress visibility
+- Infrastructure decisions MUST document scaling limits and upgrade paths
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+**Rationale**: BPM systems handle unpredictable workloads—process executions, event
+triggers, and user interactions can spike simultaneously. Retrofitting scalability is
+costly; designing for it upfront enables growth without rewrites.
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+### III. Incremental Delivery
+
+Features MUST be delivered in small, independently deployable increments that provide
+user value at each step.
+
+**Non-Negotiables**:
+- Each increment MUST be independently testable and demonstrable
+- Feature branches MUST remain mergeable within one sprint (avoid long-lived branches)
+- Partial implementations MUST be safely deployable (feature flags, graceful fallbacks)
+- Breaking changes MUST follow a deprecation cycle with migration documentation
+- Each release MUST include a changelog entry describing user-facing changes
+
+**Rationale**: Agile delivery requires continuous integration of working software.
+Large, monolithic releases increase risk, delay feedback, and create integration debt.
+
+## Technology Stack
+
+**Frontend**: Web-based UI (framework to be determined based on team expertise)
+**Backend**: API service layer with database-driven persistence
+**Background Services**: Polling/event-driven workers for process automation
+**Database**: Relational database with support for transactional integrity
+
+*Note: Specific technology choices will be documented in feature specifications and
+implementation plans as the project evolves.*
+
+## Development Workflow
+
+**Iterative Process**:
+1. User story definition with acceptance criteria
+2. Technical design review against constitution principles
+3. Implementation in small, reviewable increments
+4. Code review with focus on constitution compliance
+5. Testing at unit, integration, and user acceptance levels
+6. Deployment with monitoring and rollback capability
+
+**Quality Expectations**:
+- Code reviews MUST verify alignment with constitution principles
+- Merge requests MUST include context for reviewers (what, why, how to test)
+- Production deployments MUST have rollback procedures documented
+- Defects affecting user experience MUST be prioritized over new features
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+**Constitution Authority**: This constitution supersedes conflicting practices. When
+implementation decisions conflict with these principles, the principles govern.
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+**Amendment Process**:
+1. Proposed amendments MUST be documented with rationale
+2. Impact on existing code and practices MUST be assessed
+3. Migration plan MUST be provided for breaking changes
+4. Version increment follows semantic versioning:
+   - MAJOR: Principle removal or incompatible redefinition
+   - MINOR: New principle or section added
+   - PATCH: Clarifications and non-semantic refinements
+
+**Compliance Review**: All pull requests and design reviews SHOULD reference applicable
+constitution principles. Violations require documented justification in the Complexity
+Tracking section of implementation plans.
+
+**Version**: 1.0.0 | **Ratified**: 2025-12-26 | **Last Amended**: 2025-12-26
