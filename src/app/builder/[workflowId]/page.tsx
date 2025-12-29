@@ -2,10 +2,23 @@
 
 import { use } from 'react';
 import Link from 'next/link';
-import { Canvas } from '@/components/builder/Canvas';
+import dynamic from 'next/dynamic';
 import { getWorkflowDetail, getProcessById } from '@/lib/mock-data';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
+
+// Dynamic import with ssr: false to prevent hydration mismatch from dnd-kit
+const Canvas = dynamic(
+  () => import('@/components/builder/Canvas').then((mod) => mod.Canvas),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-muted-foreground">Loading editor...</div>
+      </div>
+    ),
+  }
+);
 
 interface PageProps {
   params: Promise<{ workflowId: string }>;
