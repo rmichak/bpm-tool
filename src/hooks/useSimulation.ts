@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import type { Task, TaskType, Route, SimulationItem, TaskMetrics } from '@/types';
 
 interface SimulationConfig {
@@ -61,8 +61,8 @@ export function useSimulation(config: SimulationConfig): UseSimulationReturn {
   // Find the begin task
   const beginTask = config.tasks.find((t) => t.type === 'begin');
 
-  // Calculate metrics from current items
-  const calculateMetrics = useCallback((): Map<string, TaskMetrics> => {
+  // Calculate metrics from current items (memoized to prevent infinite re-renders)
+  const metrics = useMemo((): Map<string, TaskMetrics> => {
     const metricsMap = new Map<string, TaskMetrics>();
     const now = Date.now();
     const SLA_HOURS = 4; // Items are overdue after 4 hours
@@ -83,19 +83,19 @@ export function useSimulation(config: SimulationConfig): UseSimulationReturn {
     const taskWaitTimes: Map<string, number[]> = new Map();
 
     items.forEach((item) => {
-      const metrics = metricsMap.get(item.taskId);
-      if (!metrics) return;
+      const taskMetrics = metricsMap.get(item.taskId);
+      if (!taskMetrics) return;
 
-      metrics.activeCount++;
+      taskMetrics.activeCount++;
 
       const ageHours = (now - item.createdAt) / (1000 * 60 * 60);
 
       if (item.isOverdue || ageHours > SLA_HOURS) {
-        metrics.overdueCount++;
+        taskMetrics.overdueCount++;
       }
 
-      if (ageHours > metrics.oldestItemAge) {
-        metrics.oldestItemAge = ageHours;
+      if (ageHours > taskMetrics.oldestItemAge) {
+        taskMetrics.oldestItemAge = ageHours;
       }
 
       // Track wait times for average calculation
@@ -107,16 +107,14 @@ export function useSimulation(config: SimulationConfig): UseSimulationReturn {
 
     // Calculate average wait times
     taskWaitTimes.forEach((times, taskId) => {
-      const metrics = metricsMap.get(taskId);
-      if (metrics && times.length > 0) {
-        metrics.avgWaitTime = times.reduce((a, b) => a + b, 0) / times.length;
+      const taskMetrics = metricsMap.get(taskId);
+      if (taskMetrics && times.length > 0) {
+        taskMetrics.avgWaitTime = times.reduce((a, b) => a + b, 0) / times.length;
       }
     });
 
     return metricsMap;
   }, [items, config.tasks]);
-
-  const metrics = calculateMetrics();
 
   // Get stats
   const stats: SimulationStats = {
