@@ -51,10 +51,7 @@ export async function GET(request: NextRequest) {
           },
         },
       },
-      orderBy: [
-        { priority: 'desc' },
-        { createdAt: 'desc' },
-      ],
+      orderBy: { createdAt: 'desc' },
     })
 
     // Parse JSON fields and transform for response
@@ -71,6 +68,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(parsed)
   } catch (error) {
     console.error('Failed to fetch work items:', error)
-    return NextResponse.json({ error: 'Failed to fetch work items' }, { status: 500 })
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    return NextResponse.json({ error: 'Failed to fetch work items', details: message }, { status: 500 })
   }
 }

@@ -70,7 +70,10 @@ export const workItemApi = {
       searchParams.set('claimedById', params.claimedById === null ? 'null' : params.claimedById)
     }
     const res = await fetch(`/api/work-items?${searchParams}`)
-    if (!res.ok) throw new Error('Failed to fetch work items')
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}))
+      throw new Error(error.details || error.error || 'Failed to fetch work items')
+    }
     return res.json()
   },
 
