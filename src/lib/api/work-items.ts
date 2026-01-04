@@ -1,3 +1,12 @@
+export interface StartWorkflowResult {
+  success: boolean
+  workItemId: string
+  currentTaskId: string
+  currentTaskName: string
+  status: 'active' | 'completed'
+  error?: string
+}
+
 export interface WorkItemListItem {
   id: string
   status: string
@@ -149,6 +158,24 @@ export const workItemApi = {
     if (!res.ok) {
       const error = await res.json()
       throw new Error(error.error || 'Failed to assign work item')
+    }
+    return res.json()
+  },
+
+  async startWorkflow(
+    workflowId: string,
+    objectType: string,
+    objectData: Record<string, unknown>,
+    priority: string = 'normal'
+  ): Promise<StartWorkflowResult> {
+    const res = await fetch(`/api/workflows/${workflowId}/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ objectType, objectData, priority }),
+    })
+    if (!res.ok) {
+      const error = await res.json()
+      throw new Error(error.error || 'Failed to start workflow')
     }
     return res.json()
   },

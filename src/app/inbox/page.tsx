@@ -20,8 +20,10 @@ import {
   User,
   Loader2,
   UserPlus,
+  Plus,
 } from 'lucide-react'
 import { AssignDialog } from '@/components/inbox/AssignDialog'
+import { StartWorkflowDialog } from '@/components/inbox/StartWorkflowDialog'
 import { cn } from '@/lib/utils'
 
 const priorityConfig = {
@@ -57,6 +59,7 @@ export default function InbasketPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [showAssignDialog, setShowAssignDialog] = useState(false)
+  const [showStartDialog, setShowStartDialog] = useState(false)
   const [selectedItemForAssign, setSelectedItemForAssign] = useState<WorkItemListItem | null>(null)
 
   const loadData = useCallback(async () => {
@@ -144,6 +147,34 @@ export default function InbasketPage() {
         description: (error as Error).message,
         variant: 'destructive',
       })
+    }
+  }
+
+  const handleStartWorkflow = async (
+    workflowId: string,
+    objectType: string,
+    objectData: Record<string, string>,
+    priority: string
+  ) => {
+    try {
+      const result = await workItemApi.startWorkflow(
+        workflowId,
+        objectType,
+        objectData,
+        priority
+      )
+      toast({
+        title: 'Workflow Started',
+        description: `Work item created at ${result.currentTaskName}`,
+      })
+      loadData()
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: (error as Error).message,
+        variant: 'destructive',
+      })
+      throw error
     }
   }
 
@@ -401,15 +432,25 @@ export default function InbasketPage() {
             </p>
           </div>
         </div>
-        <Button
-          variant="outline"
-          className="gap-2"
-          onClick={handleRefresh}
-          disabled={isRefreshing}
-        >
-          <RefreshCw className={cn('h-4 w-4', isRefreshing && 'animate-spin')} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="default"
+            className="gap-2"
+            onClick={() => setShowStartDialog(true)}
+          >
+            <Plus className="h-4 w-4" />
+            New Work Item
+          </Button>
+          <Button
+            variant="outline"
+            className="gap-2"
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+          >
+            <RefreshCw className={cn('h-4 w-4', isRefreshing && 'animate-spin')} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -538,6 +579,13 @@ export default function InbasketPage() {
             : []
         }
         onAssign={handleAssign}
+      />
+
+      {/* Start Workflow Dialog */}
+      <StartWorkflowDialog
+        open={showStartDialog}
+        onOpenChange={setShowStartDialog}
+        onStart={handleStartWorkflow}
       />
     </div>
   )
