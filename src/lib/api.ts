@@ -45,6 +45,13 @@ export const workflowApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     }).then(handleResponse),
+
+  start: (workflowId: string, data: { objectType: string; objectData: object; priority?: string }) =>
+    fetch(`${API_BASE}/workflows/${workflowId}/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }).then(handleResponse),
 }
 
 // Task API
@@ -116,5 +123,44 @@ export const groupApi = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
+    }).then(handleResponse),
+}
+
+// Work Item API
+export const workItemApi = {
+  list: (params?: { status?: string; taskId?: string; claimedById?: string }) => {
+    const searchParams = new URLSearchParams()
+    if (params?.status) searchParams.set('status', params.status)
+    if (params?.taskId) searchParams.set('taskId', params.taskId)
+    if (params?.claimedById) searchParams.set('claimedById', params.claimedById)
+    const query = searchParams.toString()
+    return fetch(`${API_BASE}/work-items${query ? `?${query}` : ''}`).then(handleResponse)
+  },
+
+  get: (id: string) =>
+    fetch(`${API_BASE}/work-items/${id}`).then(handleResponse),
+
+  update: (id: string, data: { objectData?: object; priority?: string }) =>
+    fetch(`${API_BASE}/work-items/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }).then(handleResponse),
+
+  claim: (id: string, userId: string) =>
+    fetch(`${API_BASE}/work-items/${id}/claim`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId }),
+    }).then(handleResponse),
+
+  unclaim: (id: string) =>
+    fetch(`${API_BASE}/work-items/${id}/claim`, { method: 'DELETE' }).then(handleResponse),
+
+  release: (id: string, routeLabel: string, userId: string) =>
+    fetch(`${API_BASE}/work-items/${id}/release`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ routeLabel, userId }),
     }).then(handleResponse),
 }
