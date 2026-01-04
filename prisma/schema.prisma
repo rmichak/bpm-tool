@@ -77,11 +77,12 @@ model User {
 }
 
 model Group {
-  id          String      @id @default(cuid())
-  name        String
-  description String?
-  users       UserGroup[]
-  createdAt   DateTime    @default(now())
+  id                   String      @id @default(cuid())
+  name                 String
+  description          String?
+  lastRoundRobinUserId String?     // Track last assigned user for round-robin
+  users                UserGroup[]
+  createdAt            DateTime    @default(now())
 }
 
 model UserGroup {
