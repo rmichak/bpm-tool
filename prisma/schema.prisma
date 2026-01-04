@@ -10,3 +10,83 @@ datasource db {
   provider = "sqlite"
   url      = env("DATABASE_URL")
 }
+
+model Process {
+  id          String     @id @default(cuid())
+  name        String
+  description String?
+  status      String     @default("draft") // draft, active, archived
+  workflows   Workflow[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model Workflow {
+  id         String   @id @default(cuid())
+  processId  String
+  process    Process  @relation(fields: [processId], references: [id], onDelete: Cascade)
+  name       String
+  isSubflow  Boolean  @default(false)
+  version    Int      @default(1)
+  tasks      Task[]
+  routes     Route[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Task {
+  id           String   @id @default(cuid())
+  workflowId   String
+  workflow     Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  type         String   // begin, end, user, decision, service, broadcast, rendezvous, subflow
+  name         String
+  position     String   // JSON: {x, y}
+  config       String   // JSON: type-specific config
+
+  inboundRoutes  Route[] @relation("TargetTask")
+  outboundRoutes Route[] @relation("SourceTask")
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Route {
+  id           String   @id @default(cuid())
+  workflowId   String
+  workflow     Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  sourceTaskId String
+  targetTaskId String
+  sourceTask   Task     @relation("SourceTask", fields: [sourceTaskId], references: [id], onDelete: Cascade)
+  targetTask   Task     @relation("TargetTask", fields: [targetTaskId], references: [id], onDelete: Cascade)
+  label        String?
+  condition    String?  // JSON: for decision tasks
+
+  createdAt    DateTime @default(now())
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  role      String   @default("user") // admin, user
+  groups    UserGroup[]
+  createdAt DateTime @default(now())
+}
+
+model Group {
+  id          String      @id @default(cuid())
+  name        String
+  description String?
+  users       UserGroup[]
+  createdAt   DateTime    @default(now())
+}
+
+model UserGroup {
+  userId    String
+  groupId   String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([userId, groupId])
+}
