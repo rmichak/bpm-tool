@@ -329,6 +329,59 @@ async function main() {
   })
 
   console.log('Created routes')
+
+  // Create a test work item to demonstrate the engine
+  const testInvoice = {
+    invoiceNumber: 'INV-2024-001',
+    vendor: 'Acme Corp',
+    amount: 7500, // Above $5000 threshold for manager approval
+    dueDate: '2024-02-15',
+    status: 'pending',
+    notes: 'Test invoice for workflow demonstration',
+  }
+
+  // Start at Invoice Entry task (after begin)
+  const testWorkItem = await prisma.workItem.upsert({
+    where: { id: 'test-work-item-1' },
+    update: {},
+    create: {
+      id: 'test-work-item-1',
+      workflowId: mainWorkflow.id,
+      currentTaskId: entryTask.id,
+      objectType: 'invoice',
+      objectData: JSON.stringify(testInvoice),
+      priority: 'high',
+      status: 'active',
+    },
+  })
+
+  // Add initial history
+  await prisma.workItemHistory.upsert({
+    where: { id: 'history-1' },
+    update: {},
+    create: {
+      id: 'history-1',
+      workItemId: testWorkItem.id,
+      taskId: beginTask.id,
+      taskName: 'Start',
+      action: 'created',
+      notes: 'Test invoice created',
+    },
+  })
+
+  await prisma.workItemHistory.upsert({
+    where: { id: 'history-2' },
+    update: {},
+    create: {
+      id: 'history-2',
+      workItemId: testWorkItem.id,
+      taskId: entryTask.id,
+      taskName: 'Invoice Entry',
+      action: 'arrived',
+    },
+  })
+
+  console.log('Created test work item:', testWorkItem.id)
   console.log('Seeding complete!')
 }
 
