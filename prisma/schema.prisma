@@ -22,29 +22,31 @@ model Process {
 }
 
 model Workflow {
-  id         String   @id @default(cuid())
+  id         String     @id @default(cuid())
   processId  String
-  process    Process  @relation(fields: [processId], references: [id], onDelete: Cascade)
+  process    Process    @relation(fields: [processId], references: [id], onDelete: Cascade)
   name       String
-  isSubflow  Boolean  @default(false)
-  version    Int      @default(1)
+  isSubflow  Boolean    @default(false)
+  version    Int        @default(1)
   tasks      Task[]
   routes     Route[]
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  workItems  WorkItem[]
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
 }
 
 model Task {
-  id           String   @id @default(cuid())
+  id           String     @id @default(cuid())
   workflowId   String
-  workflow     Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
-  type         String   // begin, end, user, decision, service, broadcast, rendezvous, subflow
+  workflow     Workflow   @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  type         String     // begin, end, user, decision, service, broadcast, rendezvous, subflow
   name         String
-  position     String   // JSON: {x, y}
-  config       String   // JSON: type-specific config
+  position     String     // JSON: {x, y}
+  config       String     // JSON: type-specific config
 
-  inboundRoutes  Route[] @relation("TargetTask")
-  outboundRoutes Route[] @relation("SourceTask")
+  inboundRoutes  Route[]    @relation("TargetTask")
+  outboundRoutes Route[]    @relation("SourceTask")
+  workItems      WorkItem[]
 
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -65,12 +67,13 @@ model Route {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String
-  role      String   @default("user") // admin, user
-  groups    UserGroup[]
-  createdAt DateTime @default(now())
+  id           String     @id @default(cuid())
+  email        String     @unique
+  name         String
+  role         String     @default("user") // admin, user
+  groups       UserGroup[]
+  claimedItems WorkItem[] @relation("ClaimedItems")
+  createdAt    DateTime   @default(now())
 }
 
 model Group {
@@ -89,4 +92,44 @@ model UserGroup {
   createdAt DateTime @default(now())
 
   @@id([userId, groupId])
+}
+
+model WorkItem {
+  id            String    @id @default(cuid())
+  workflowId    String
+  workflow      Workflow  @relation(fields: [workflowId], references: [id])
+  currentTaskId String
+  currentTask   Task      @relation(fields: [currentTaskId], references: [id])
+
+  // Business object (embedded metadata)
+  objectType    String    // "invoice", "purchase_order", etc.
+  objectData    String    // JSON: the actual business object fields
+
+  // Status tracking
+  status        String    @default("active") // active, completed, cancelled
+  priority      String    @default("normal") // low, normal, high, urgent
+
+  // Assignment
+  claimedById   String?
+  claimedBy     User?     @relation("ClaimedItems", fields: [claimedById], references: [id])
+  claimedAt     DateTime?
+
+  // Audit trail
+  history       WorkItemHistory[]
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model WorkItemHistory {
+  id          String   @id @default(cuid())
+  workItemId  String
+  workItem    WorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  taskId      String
+  taskName    String
+  action      String   // "created", "arrived", "claimed", "released", "auto-routed", "completed"
+  routeLabel  String?
+  userId      String?
+  notes       String?
+  timestamp   DateTime @default(now())
 }
