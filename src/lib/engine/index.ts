@@ -250,7 +250,69 @@ export class WorkflowEngine {
       return this.moveToTask(workItemId, nextRoute.targetTaskId)
     }
 
-    // Handle USER task (and other task types) - stop and wait for user action
+    // Handle USER task - check for round-robin distribution
+    if (targetTask.type === 'user') {
+      // Update work item position first
+      await prisma.workItem.update({
+        where: { id: workItemId },
+        data: {
+          currentTaskId: targetTaskId,
+          claimedById: null,
+          claimedAt: null,
+        },
+      })
+
+      await prisma.workItemHistory.create({
+        data: {
+          workItemId,
+          taskId: targetTaskId,
+          taskName: targetTask.name,
+          action: 'arrived',
+          notes: `Work item arrived at ${targetTask.type} task`,
+        },
+      })
+
+      // Check for round-robin distribution
+      let config: { type: string; distributionMethod?: string; assignees?: { type: string; ids: string[] } }
+      try {
+        config = JSON.parse(targetTask.config) as { type: string; distributionMethod?: string; assignees?: { type: string; ids: string[] } }
+      } catch {
+        config = { type: 'user' }
+      }
+
+      if (
+        config.distributionMethod === 'round-robin' &&
+        config.assignees?.type === 'group' &&
+        config.assignees.ids.length > 0
+      ) {
+        const assignedUserId = await this.assignRoundRobin(config.assignees.ids[0])
+        if (assignedUserId) {
+          await prisma.workItem.update({
+            where: { id: workItemId },
+            data: { claimedById: assignedUserId, claimedAt: new Date() },
+          })
+          await prisma.workItemHistory.create({
+            data: {
+              workItemId,
+              taskId: targetTaskId,
+              taskName: targetTask.name,
+              action: 'auto-assigned',
+              notes: 'Assigned via round-robin distribution',
+            },
+          })
+        }
+      }
+
+      return {
+        success: true,
+        workItemId,
+        currentTaskId: targetTaskId,
+        currentTaskName: targetTask.name,
+        status: 'active',
+      }
+    }
+
+    // Handle other task types - stop and wait for user action
     const updatedWorkItem = await prisma.workItem.update({
       where: { id: workItemId },
       data: {
@@ -483,6 +545,38 @@ export class WorkflowEngine {
     }
 
     return current
+  }
+
+  /**
+   * Assigns a work item to the next user in round-robin order within a group.
+   * Tracks the last assigned user to ensure fair distribution.
+   */
+  private async assignRoundRobin(groupId: string): Promise<string | null> {
+    const group = await prisma.group.findUnique({
+      where: { id: groupId },
+      include: {
+        users: {
+          include: { user: true },
+          orderBy: { user: { name: 'asc' } },
+        },
+      },
+    })
+
+    if (!group || group.users.length === 0) return null
+
+    const userIds = group.users.map((ug) => ug.userId)
+    const lastIndex = group.lastRoundRobinUserId
+      ? userIds.indexOf(group.lastRoundRobinUserId)
+      : -1
+    const nextIndex = (lastIndex + 1) % userIds.length
+    const nextUserId = userIds[nextIndex]
+
+    await prisma.group.update({
+      where: { id: groupId },
+      data: { lastRoundRobinUserId: nextUserId },
+    })
+
+    return nextUserId
   }
 }
 
