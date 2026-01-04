@@ -1,11 +1,12 @@
 'use client';
 
-import { use } from 'react';
+import { use, useState, useEffect } from 'react';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import { getWorkflowDetail, getProcessById } from '@/lib/mock-data';
+import { workflowApi } from '@/lib/api';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Loader2 } from 'lucide-react';
+import type { WorkflowDetail } from '@/types';
 
 // Dynamic import with ssr: false to prevent hydration mismatch from dnd-kit
 const Canvas = dynamic(
@@ -24,17 +25,58 @@ interface PageProps {
   params: Promise<{ workflowId: string }>;
 }
 
+interface WorkflowApiResponse extends WorkflowDetail {
+  process?: {
+    id: string;
+    name: string;
+    status: string;
+  };
+}
+
 export default function WorkflowEditorPage({ params }: PageProps) {
   const { workflowId } = use(params);
-  const workflow = getWorkflowDetail(workflowId);
+  const [workflow, setWorkflow] = useState<WorkflowApiResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  if (!workflow) {
+  useEffect(() => {
+    async function fetchWorkflow() {
+      try {
+        setLoading(true);
+        setError(null);
+        const data = await workflowApi.get(workflowId) as WorkflowApiResponse;
+        setWorkflow(data);
+      } catch (err) {
+        console.error('Failed to fetch workflow:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load workflow');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchWorkflow();
+  }, [workflowId]);
+
+  if (loading) {
+    return (
+      <div className="h-[calc(100vh-3.5rem)] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <p className="text-muted-foreground">Loading workflow...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !workflow) {
     return (
       <div className="container py-10">
         <div className="text-center">
-          <h1 className="text-2xl font-bold mb-2">Workflow Not Found</h1>
+          <h1 className="text-2xl font-bold mb-2">
+            {error ? 'Error Loading Workflow' : 'Workflow Not Found'}
+          </h1>
           <p className="text-muted-foreground mb-4">
-            The workflow you're looking for doesn't exist.
+            {error || "The workflow you're looking for doesn't exist."}
           </p>
           <Link href="/builder">
             <Button>
@@ -46,8 +88,6 @@ export default function WorkflowEditorPage({ params }: PageProps) {
       </div>
     );
   }
-
-  const process = getProcessById(workflow.processId);
 
   return (
     <div className="h-[calc(100vh-3.5rem)] flex flex-col">
@@ -64,14 +104,14 @@ export default function WorkflowEditorPage({ params }: PageProps) {
           <div>
             <h1 className="font-semibold">{workflow.name}</h1>
             <p className="text-xs text-muted-foreground">
-              {process?.name} • Version {workflow.version}
+              {workflow.process?.name || 'Unknown Process'} • Version {workflow.version}
             </p>
           </div>
         </div>
       </div>
 
       {/* Canvas */}
-      <Canvas workflow={workflow} />
+      <Canvas workflow={workflow} workflowId={workflowId} />
     </div>
   );
 }

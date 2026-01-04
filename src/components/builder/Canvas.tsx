@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useState, useEffect } from 'react';
+import { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import {
   ReactFlow,
   Background,
@@ -12,9 +12,13 @@ import {
   Connection,
   Edge,
   Node,
+  NodeChange,
+  EdgeChange,
   BackgroundVariant,
   NodeTypes,
   EdgeTypes,
+  applyNodeChanges,
+  applyEdgeChanges,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useDroppable } from '@dnd-kit/core';
@@ -27,6 +31,7 @@ import { Breadcrumbs, BreadcrumbItem } from './Breadcrumbs';
 import { ProcessTree, ProcessTreeNode } from './ProcessTree';
 import { SimulationPanel } from './SimulationPanel';
 import { useSimulation } from '@/hooks/useSimulation';
+import { taskApi, routeApi } from '@/lib/api';
 import type { Task, Route, TaskType, WorkflowDetail, TaskMetrics } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -62,6 +67,7 @@ interface TaskNodeData extends Record<string, unknown> {
 
 interface CanvasProps {
   workflow: WorkflowDetail;
+  workflowId: string;
   onSave?: (tasks: Task[], routes: Route[]) => void;
 }
 
@@ -148,7 +154,7 @@ function CanvasDropZone({ children }: { children: React.ReactNode }) {
 
 type SidebarView = 'palette' | 'tree';
 
-export function Canvas({ workflow, onSave }: CanvasProps) {
+export function Canvas({ workflow, workflowId, onSave }: CanvasProps) {
   const { toast } = useToast();
   const [sidebarView, setSidebarView] = useState<SidebarView>('palette');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -158,6 +164,10 @@ export function Canvas({ workflow, onSave }: CanvasProps) {
   const [breadcrumbPath, setBreadcrumbPath] = useState<BreadcrumbItem[]>([
     { id: workflow.id, name: workflow.name, workflowId: workflow.id },
   ]);
+
+  // Track pending position updates to debounce API calls
+  const pendingPositionUpdates = useRef<Map<string, { x: number; y: number }>>(new Map());
+  const positionUpdateTimeout = useRef<NodeJS.Timeout | null>(null);
 
   // Build process tree from workflow data
   const processTree: ProcessTreeNode = useMemo(() => {
@@ -239,8 +249,80 @@ export function Canvas({ workflow, onSave }: CanvasProps) {
     [workflow.routes]
   );
 
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+  const [nodes, setNodes] = useNodesState(initialNodes);
+  const [edges, setEdges] = useEdgesState(initialEdges);
+
+  // Flush pending position updates to API
+  const flushPositionUpdates = useCallback(() => {
+    if (pendingPositionUpdates.current.size === 0) return;
+
+    const updates = Array.from(pendingPositionUpdates.current.entries());
+    pendingPositionUpdates.current.clear();
+
+    updates.forEach(([taskId, position]) => {
+      taskApi.update(workflowId, taskId, { position }).catch((err) => {
+        console.error('Failed to update task position:', err);
+      });
+    });
+  }, [workflowId]);
+
+  // Custom onNodesChange that persists position changes
+  const onNodesChange = useCallback(
+    (changes: NodeChange<Node<TaskNodeData>>[]) => {
+      // Apply changes locally first
+      setNodes((nds) => applyNodeChanges(changes, nds));
+
+      // Handle position changes (debounced)
+      changes.forEach((change) => {
+        if (change.type === 'position' && change.position && !change.dragging) {
+          // Queue the position update
+          pendingPositionUpdates.current.set(change.id, change.position);
+
+          // Clear existing timeout and set a new one
+          if (positionUpdateTimeout.current) {
+            clearTimeout(positionUpdateTimeout.current);
+          }
+          positionUpdateTimeout.current = setTimeout(flushPositionUpdates, 300);
+        }
+
+        // Handle node deletion
+        if (change.type === 'remove') {
+          taskApi.delete(workflowId, change.id).catch((err) => {
+            console.error('Failed to delete task:', err);
+            toast({
+              title: 'Error',
+              description: 'Failed to delete task',
+              variant: 'destructive',
+            });
+          });
+        }
+      });
+    },
+    [workflowId, setNodes, flushPositionUpdates, toast]
+  );
+
+  // Custom onEdgesChange that persists edge deletions
+  const onEdgesChange = useCallback(
+    (changes: EdgeChange<Edge>[]) => {
+      // Apply changes locally first
+      setEdges((eds) => applyEdgeChanges(changes, eds));
+
+      // Handle edge deletion
+      changes.forEach((change) => {
+        if (change.type === 'remove') {
+          routeApi.delete(workflowId, change.id).catch((err) => {
+            console.error('Failed to delete route:', err);
+            toast({
+              title: 'Error',
+              description: 'Failed to delete connection',
+              variant: 'destructive',
+            });
+          });
+        }
+      });
+    },
+    [workflowId, setEdges, toast]
+  );
 
   // Update node metrics when simulation changes
   useEffect(() => {
@@ -267,18 +349,49 @@ export function Canvas({ workflow, onSave }: CanvasProps) {
 
   const onConnect = useCallback(
     (params: Connection) => {
+      if (!params.source || !params.target) return;
+
+      // Generate a temporary ID for optimistic update
+      const tempId = `route-${Date.now()}`;
+
+      // Add edge locally first (optimistic update)
       setEdges((eds) =>
         addEdge(
           {
             ...params,
+            id: tempId,
             type: 'animated',
             style: { strokeWidth: 2 },
           },
           eds
         )
       );
+
+      // Persist to API
+      routeApi
+        .create(workflowId, {
+          sourceTaskId: params.source,
+          targetTaskId: params.target,
+        })
+        .then((result) => {
+          const createdRoute = result as { id: string };
+          // Update the edge with the real ID from the server
+          setEdges((eds) =>
+            eds.map((e) => (e.id === tempId ? { ...e, id: createdRoute.id } : e))
+          );
+        })
+        .catch((err) => {
+          console.error('Failed to create route:', err);
+          // Remove the optimistically added edge on failure
+          setEdges((eds) => eds.filter((e) => e.id !== tempId));
+          toast({
+            title: 'Error',
+            description: 'Failed to create connection',
+            variant: 'destructive',
+          });
+        });
     },
-    [setEdges]
+    [workflowId, setEdges, toast]
   );
 
   const handleDragEnd = useCallback(
@@ -289,15 +402,20 @@ export function Canvas({ workflow, onSave }: CanvasProps) {
       if (!active.data.current?.fromPalette) return;
 
       const taskType = active.data.current.type as TaskType;
+      const taskName = `New ${taskType.charAt(0).toUpperCase() + taskType.slice(1)}`;
+      const position = { x: 400, y: 200 + nodes.length * 100 };
+
+      // Generate a temporary ID for optimistic update
+      const tempId = `task-${Date.now()}`;
 
       const newTask: Task = {
-        id: `task-${Date.now()}`,
-        workflowId: workflow.id,
+        id: tempId,
+        workflowId: workflowId,
         type: taskType,
-        name: `New ${taskType.charAt(0).toUpperCase() + taskType.slice(1)}`,
+        name: taskName,
         description: '',
         config: { type: taskType } as Task['config'],
-        position: { x: 400, y: 200 + nodes.length * 100 },
+        position,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -309,15 +427,55 @@ export function Canvas({ workflow, onSave }: CanvasProps) {
         data: { task: newTask, label: newTask.name, onSelect: handleNodeSelect },
       };
 
+      // Add node locally first (optimistic update)
       setNodes((nds) => [...nds, newNode]);
       setSelectedTaskId(newTask.id);
 
-      toast({
-        title: 'Task Added',
-        description: `${newTask.name} has been added to the canvas.`,
-      });
+      // Persist to API
+      taskApi
+        .create(workflowId, {
+          type: taskType,
+          name: taskName,
+          position,
+          config: { type: taskType },
+        })
+        .then((result) => {
+          const createdTask = result as Task;
+          // Update the node with the real ID and data from the server
+          setNodes((nds) =>
+            nds.map((n) =>
+              n.id === tempId
+                ? {
+                    ...n,
+                    id: createdTask.id,
+                    data: {
+                      ...n.data,
+                      task: createdTask,
+                    },
+                  }
+                : n
+            )
+          );
+          // Update selected task ID if it was the temp one
+          setSelectedTaskId((prev) => (prev === tempId ? createdTask.id : prev));
+          toast({
+            title: 'Task Added',
+            description: `${taskName} has been added to the canvas.`,
+          });
+        })
+        .catch((err) => {
+          console.error('Failed to create task:', err);
+          // Remove the optimistically added node on failure
+          setNodes((nds) => nds.filter((n) => n.id !== tempId));
+          setSelectedTaskId(null);
+          toast({
+            title: 'Error',
+            description: 'Failed to create task',
+            variant: 'destructive',
+          });
+        });
     },
-    [workflow.id, nodes.length, setNodes, handleNodeSelect, toast]
+    [workflowId, nodes.length, setNodes, handleNodeSelect, toast]
   );
 
   const handleSave = useCallback(() => {
@@ -366,13 +524,36 @@ export function Canvas({ workflow, onSave }: CanvasProps) {
 
   const handleDeleteTask = useCallback(
     (taskId: string) => {
+      // Get the edges to delete for cleanup
+      const edgesToDelete = edges.filter(
+        (e) => e.source === taskId || e.target === taskId
+      );
+
+      // Remove node and edges locally first
       setNodes((nds) => nds.filter((n) => n.id !== taskId));
       setEdges((eds) =>
         eds.filter((e) => e.source !== taskId && e.target !== taskId)
       );
       setSelectedTaskId(null);
+
+      // Persist task deletion to API
+      taskApi.delete(workflowId, taskId).catch((err) => {
+        console.error('Failed to delete task:', err);
+        toast({
+          title: 'Error',
+          description: 'Failed to delete task',
+          variant: 'destructive',
+        });
+      });
+
+      // Persist edge deletions to API
+      edgesToDelete.forEach((edge) => {
+        routeApi.delete(workflowId, edge.id).catch((err) => {
+          console.error('Failed to delete route:', err);
+        });
+      });
     },
-    [setNodes, setEdges]
+    [workflowId, edges, setNodes, setEdges, toast]
   );
 
   return (
