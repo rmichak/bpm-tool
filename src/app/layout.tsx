@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import '@/styles/globals.css'
 import { Header } from '@/components/shared/Header'
 import { RoleProvider } from '@/contexts/RoleContext'
+import { UserProvider } from '@/contexts/UserContext'
 import { Toaster } from '@/components/ui/toaster'
 import { TooltipProvider } from '@/components/ui/tooltip'
 
@@ -19,13 +20,15 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <RoleProvider>
-          <TooltipProvider>
-            <div className="relative flex min-h-screen flex-col">
-              <Header />
-              <main className="flex-1">{children}</main>
-            </div>
-            <Toaster />
-          </TooltipProvider>
+          <UserProvider>
+            <TooltipProvider>
+              <div className="relative flex min-h-screen flex-col">
+                <Header />
+                <main className="flex-1">{children}</main>
+              </div>
+              <Toaster />
+            </TooltipProvider>
+          </UserProvider>
         </RoleProvider>
       </body>
     </html>
