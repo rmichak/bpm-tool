@@ -139,4 +139,17 @@ export const workItemApi = {
     }
     return res.json()
   },
+
+  async assign(id: string, userId: string, assignedBy: string): Promise<WorkItemListItem> {
+    const res = await fetch(`/api/work-items/${id}/assign`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, assignedBy }),
+    })
+    if (!res.ok) {
+      const error = await res.json()
+      throw new Error(error.error || 'Failed to assign work item')
+    }
+    return res.json()
+  },
 }
