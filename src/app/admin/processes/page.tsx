@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -19,7 +19,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { mockProcesses, mockWorkflows } from '@/lib/mock-data'
 import {
   Plus,
   Search,
@@ -31,9 +30,27 @@ import {
   Archive,
   GitBranch,
   ExternalLink,
+  Loader2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
+
+interface Workflow {
+  id: string
+  name: string
+  isSubflow: boolean
+  version: number
+}
+
+interface Process {
+  id: string
+  name: string
+  description: string | null
+  status: string
+  createdAt: string
+  updatedAt: string
+  workflows: Workflow[]
+}
 
 const statusColors: Record<string, string> = {
   active: 'bg-success/10 text-success border-success/20',
@@ -43,8 +60,33 @@ const statusColors: Record<string, string> = {
 
 export default function ProcessesPage() {
   const { toast } = useToast()
+  const [processes, setProcesses] = useState<Process[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
   const [searchQuery, setSearchQuery] = useState('')
+
+  const loadProcesses = useCallback(async () => {
+    try {
+      const res = await fetch('/api/processes')
+      if (res.ok) {
+        const data = await res.json()
+        setProcesses(data)
+      }
+    } catch (error) {
+      console.error('Failed to load processes:', error)
+      toast({
+        title: 'Error',
+        description: 'Failed to load processes',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }, [toast])
+
+  useEffect(() => {
+    loadProcesses()
+  }, [loadProcesses])
 
   const toggleRow = (id: string) => {
     const newExpanded = new Set(expandedRows)
@@ -56,11 +98,7 @@ export default function ProcessesPage() {
     setExpandedRows(newExpanded)
   }
 
-  const getWorkflowsForProcess = (processId: string) => {
-    return mockWorkflows.filter((w) => w.processId === processId)
-  }
-
-  const filteredProcesses = mockProcesses.filter((p) =>
+  const filteredProcesses = processes.filter((p) =>
     p.name.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
@@ -117,6 +155,11 @@ export default function ProcessesPage() {
 
       {/* Processes Table */}
       <div className="rounded-xl border border-border bg-card overflow-hidden">
+        {isLoading ? (
+          <div className="flex justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
@@ -130,7 +173,7 @@ export default function ProcessesPage() {
           </TableHeader>
           <TableBody>
             {filteredProcesses.map((process, index) => {
-              const workflows = getWorkflowsForProcess(process.id)
+              const workflows = process.workflows || []
               const isExpanded = expandedRows.has(process.id)
 
               return (
@@ -241,7 +284,7 @@ export default function ProcessesPage() {
                                           >
                                             v{workflow.version}
                                           </Badge>
-                                          {workflow.isMainFlow && (
+                                          {!workflow.isSubflow && (
                                             <Badge
                                               variant="outline"
                                               className="text-[10px] h-5"
@@ -279,6 +322,7 @@ export default function ProcessesPage() {
             })}
           </TableBody>
         </Table>
+        )}
       </div>
     </div>
   )
