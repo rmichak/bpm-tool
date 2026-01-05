@@ -31,6 +31,8 @@ import {
   GitBranch,
   ExternalLink,
   Loader2,
+  Play,
+  Pause,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
@@ -107,6 +109,32 @@ export default function ProcessesPage() {
       title: `${action} Process`,
       description: `"${name}" has been ${action.toLowerCase()}d. (Mockup)`,
     })
+  }
+
+  const handleStatusChange = async (processId: string, newStatus: string, name: string) => {
+    try {
+      const res = await fetch(`/api/processes/${processId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      })
+      if (res.ok) {
+        toast({
+          title: 'Status Updated',
+          description: `"${name}" is now ${newStatus}.`,
+        })
+        loadProcesses()
+      } else {
+        const error = await res.json()
+        throw new Error(error.error || 'Failed to update status')
+      }
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: (error as Error).message,
+        variant: 'destructive',
+      })
+    }
   }
 
   return (
@@ -222,6 +250,23 @@ export default function ProcessesPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            {process.status === 'draft' && (
+                              <DropdownMenuItem
+                                onClick={() => handleStatusChange(process.id, 'active', process.name)}
+                                className="text-success"
+                              >
+                                <Play className="h-4 w-4 mr-2" />
+                                Activate
+                              </DropdownMenuItem>
+                            )}
+                            {process.status === 'active' && (
+                              <DropdownMenuItem
+                                onClick={() => handleStatusChange(process.id, 'draft', process.name)}
+                              >
+                                <Pause className="h-4 w-4 mr-2" />
+                                Deactivate
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuItem
                               onClick={() => handleAction('Edit', process.name)}
                             >
