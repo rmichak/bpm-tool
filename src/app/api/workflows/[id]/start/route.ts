@@ -9,7 +9,7 @@ export async function POST(
   try {
     const { id: workflowId } = await params
     const body = await request.json()
-    const { objectType, objectData, priority } = body
+    const { objectType, objectData, priority, objectTypeId } = body
 
     if (!objectType || !objectData) {
       return NextResponse.json(
@@ -22,7 +22,8 @@ export async function POST(
       workflowId,
       objectType,
       objectData,
-      priority || 'normal'
+      priority || 'normal',
+      objectTypeId
     )
 
     if (!result.success) {

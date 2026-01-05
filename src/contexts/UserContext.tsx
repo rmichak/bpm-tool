@@ -34,7 +34,14 @@ export function UserProvider({ children }: { children: ReactNode }) {
           if (data.length > 0) {
             const savedUserId = localStorage.getItem('currentUserId')
             const savedUser = data.find((u: User) => u.id === savedUserId)
-            setCurrentUser(savedUser || data[0])
+            if (savedUser) {
+              setCurrentUser(savedUser)
+            } else {
+              // Saved user ID not found (e.g., database was reset)
+              // Clear stale localStorage and use first available user
+              localStorage.removeItem('currentUserId')
+              setCurrentUser(data[0])
+            }
           }
         }
       } catch (error) {

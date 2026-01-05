@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -29,7 +29,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import { extendedUsers, mockGroups, groupMemberships } from '@/lib/mock-data'
+import { userApi, groupApi } from '@/lib/api'
+import type { User, Group } from '@/types'
 import {
   Plus,
   Search,
@@ -38,16 +39,52 @@ import {
   UserX,
   Users,
   Shield,
-  User,
+  User as UserIcon,
   Mail,
+  Loader2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
+
+interface UserWithGroups extends User {
+  groups: { id: string; name: string }[]
+}
+
+interface GroupWithMembers extends Group {
+  users: { id: string; name: string; email: string }[]
+  _count?: { users: number }
+}
 
 export default function UsersPage() {
   const { toast } = useToast()
   const [searchQuery, setSearchQuery] = useState('')
   const [inviteOpen, setInviteOpen] = useState(false)
+  const [users, setUsers] = useState<UserWithGroups[]>([])
+  const [groups, setGroups] = useState<GroupWithMembers[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const [usersData, groupsData] = await Promise.all([
+          userApi.list(),
+          groupApi.list(),
+        ])
+        setUsers(usersData as UserWithGroups[])
+        setGroups(groupsData as GroupWithMembers[])
+      } catch (error) {
+        console.error('Failed to load data:', error)
+        toast({
+          title: 'Error',
+          description: 'Failed to load users and groups',
+          variant: 'destructive',
+        })
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadData()
+  }, [toast])
 
   const getInitials = (name: string) => {
     return name
@@ -57,22 +94,9 @@ export default function UsersPage() {
       .toUpperCase()
   }
 
-  const getGroupsForUser = (userId: string) => {
-    const userGroups = groupMemberships
-      .filter((gm) => gm.userIds.includes(userId))
-      .map((gm) => mockGroups.find((g) => g.id === gm.groupId)?.name)
-      .filter(Boolean)
-    return userGroups
-  }
-
-  const getMemberCount = (groupId: string) => {
-    const membership = groupMemberships.find((gm) => gm.groupId === groupId)
-    return membership?.userIds.length || 0
-  }
-
-  const filteredUsers = extendedUsers.filter(
+  const filteredUsers = users.filter(
     (u) =>
-      u.displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       u.email.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
@@ -81,6 +105,14 @@ export default function UsersPage() {
       title: `${action}`,
       description: `Action performed on "${name}". (Mockup)`,
     })
+  }
+
+  if (loading) {
+    return (
+      <div className="container py-16 flex justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    )
   }
 
   return (
@@ -156,7 +188,7 @@ export default function UsersPage() {
       <Tabs defaultValue="users" className="space-y-6">
         <TabsList>
           <TabsTrigger value="users" className="gap-2">
-            <User className="h-4 w-4" />
+            <UserIcon className="h-4 w-4" />
             Users
           </TabsTrigger>
           <TabsTrigger value="groups" className="gap-2">
@@ -186,125 +218,96 @@ export default function UsersPage() {
                 <TableRow className="hover:bg-transparent">
                   <TableHead>User</TableHead>
                   <TableHead>Role</TableHead>
-                  <TableHead>Status</TableHead>
                   <TableHead>Groups</TableHead>
-                  <TableHead>Last Active</TableHead>
                   <TableHead className="w-[80px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredUsers.map((user, index) => {
-                  const groups = getGroupsForUser(user.id)
-                  return (
-                    <TableRow
-                      key={user.id}
-                      className="stagger-item"
-                      style={{ animationDelay: `${index * 0.05}s` }}
-                    >
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <Avatar className="h-9 w-9 border border-border">
-                            <AvatarFallback className="text-xs">
-                              {getInitials(user.displayName)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <p className="font-medium">{user.displayName}</p>
-                            <p className="text-sm text-muted-foreground">
-                              {user.email}
-                            </p>
-                          </div>
+                {filteredUsers.map((user, index) => (
+                  <TableRow
+                    key={user.id}
+                    className="stagger-item"
+                    style={{ animationDelay: `${index * 0.05}s` }}
+                  >
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-9 w-9 border border-border">
+                          <AvatarFallback className="text-xs">
+                            {getInitials(user.name)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <p className="font-medium">{user.name}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {user.email}
+                          </p>
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            'capitalize',
-                            user.role === 'admin'
-                              ? 'bg-warning/10 text-warning border-warning/20'
-                              : ''
-                          )}
-                        >
-                          {user.role === 'admin' && (
-                            <Shield className="h-3 w-3 mr-1" />
-                          )}
-                          {user.role}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            'capitalize',
-                            user.status === 'active'
-                              ? 'bg-success/10 text-success border-success/20'
-                              : 'bg-muted text-muted-foreground'
-                          )}
-                        >
-                          {user.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1">
-                          {groups.length > 0 ? (
-                            groups.map((group, i) => (
-                              <Badge key={i} variant="secondary" className="text-xs">
-                                {group}
-                              </Badge>
-                            ))
-                          ) : (
-                            <span className="text-sm text-muted-foreground">
-                              No groups
-                            </span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground text-sm">
-                        {user.lastActiveAt
-                          ? new Date(user.lastActiveAt).toLocaleDateString()
-                          : 'Never'}
-                      </TableCell>
-                      <TableCell>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={() =>
-                                handleAction('Edit User', user.displayName)
-                              }
-                            >
-                              <Pencil className="h-4 w-4 mr-2" />
-                              Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() =>
-                                handleAction('Send Email', user.displayName)
-                              }
-                            >
-                              <Mail className="h-4 w-4 mr-2" />
-                              Send Email
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onClick={() =>
-                                handleAction('Deactivate', user.displayName)
-                              }
-                              className="text-destructive"
-                            >
-                              <UserX className="h-4 w-4 mr-2" />
-                              Deactivate
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          'capitalize',
+                          user.role === 'admin'
+                            ? 'bg-warning/10 text-warning border-warning/20'
+                            : ''
+                        )}
+                      >
+                        {user.role === 'admin' && (
+                          <Shield className="h-3 w-3 mr-1" />
+                        )}
+                        {user.role}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {user.groups && user.groups.length > 0 ? (
+                          user.groups.map((group) => (
+                            <Badge key={group.id} variant="secondary" className="text-xs">
+                              {group.name}
+                            </Badge>
+                          ))
+                        ) : (
+                          <span className="text-sm text-muted-foreground">
+                            No groups
+                          </span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={() => handleAction('Edit User', user.name)}
+                          >
+                            <Pencil className="h-4 w-4 mr-2" />
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleAction('Send Email', user.name)}
+                          >
+                            <Mail className="h-4 w-4 mr-2" />
+                            Send Email
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={() => handleAction('Deactivate', user.name)}
+                            className="text-destructive"
+                          >
+                            <UserX className="h-4 w-4 mr-2" />
+                            Deactivate
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
           </div>
@@ -329,13 +332,9 @@ export default function UsersPage() {
 
           {/* Groups Grid */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {mockGroups.map((group, index) => {
-              const memberCount = getMemberCount(group.id)
-              const members = groupMemberships
-                .find((gm) => gm.groupId === group.id)
-                ?.userIds.slice(0, 4)
-                .map((uid) => extendedUsers.find((u) => u.id === uid))
-                .filter(Boolean)
+            {groups.map((group, index) => {
+              const memberCount = group._count?.users ?? group.users?.length ?? 0
+              const members = group.users?.slice(0, 4) || []
 
               return (
                 <div
@@ -368,18 +367,18 @@ export default function UsersPage() {
 
                   <h3 className="font-semibold mb-1">{group.name}</h3>
                   <p className="text-sm text-muted-foreground mb-4">
-                    {group.description}
+                    {group.description || 'No description'}
                   </p>
 
                   <div className="flex items-center justify-between">
                     <div className="flex -space-x-2">
-                      {members?.map((member) => (
+                      {members.map((member) => (
                         <Avatar
-                          key={member?.id}
+                          key={member.id}
                           className="h-8 w-8 border-2 border-card"
                         >
                           <AvatarFallback className="text-xs">
-                            {member?.displayName
+                            {member.name
                               .split(' ')
                               .map((n) => n[0])
                               .join('')}
@@ -393,7 +392,7 @@ export default function UsersPage() {
                       )}
                     </div>
                     <span className="text-sm text-muted-foreground">
-                      {memberCount} members
+                      {memberCount} member{memberCount !== 1 ? 's' : ''}
                     </span>
                   </div>
                 </div>

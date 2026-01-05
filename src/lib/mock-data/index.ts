@@ -15,28 +15,22 @@ export const mockUsers: User[] = [
   {
     id: 'user-1',
     email: 'admin@example.com',
-    displayName: 'Admin User',
-    avatarUrl: null,
+    name: 'Admin User',
     role: 'admin',
-    status: 'active',
     createdAt: '2024-01-01T00:00:00Z',
   },
   {
     id: 'user-2',
     email: 'john@example.com',
-    displayName: 'John Smith',
-    avatarUrl: null,
+    name: 'John Smith',
     role: 'user',
-    status: 'active',
     createdAt: '2024-01-01T00:00:00Z',
   },
   {
     id: 'user-3',
     email: 'jane@example.com',
-    displayName: 'Jane Doe',
-    avatarUrl: null,
+    name: 'Jane Doe',
     role: 'user',
-    status: 'active',
     createdAt: '2024-01-01T00:00:00Z',
   },
 ];
@@ -48,14 +42,12 @@ export const mockGroups: Group[] = [
     name: 'Approvers',
     description: 'Invoice approval team',
     createdAt: '2024-01-01T00:00:00Z',
-    updatedAt: '2024-01-01T00:00:00Z',
   },
   {
     id: 'group-2',
     name: 'Finance Team',
     description: 'Finance department members',
     createdAt: '2024-01-01T00:00:00Z',
-    updatedAt: '2024-01-01T00:00:00Z',
   },
 ];
 
@@ -65,7 +57,7 @@ export const mockProcesses: Process[] = [
     id: 'process-1',
     name: 'Invoice Approval',
     description: 'Standard invoice approval workflow',
-    status: 'active',
+    status: 'running',
     createdAt: '2024-01-15T10:00:00Z',
     updatedAt: '2024-01-20T14:30:00Z',
     createdBy: 'user-1',
@@ -74,18 +66,18 @@ export const mockProcesses: Process[] = [
     id: 'process-2',
     name: 'Purchase Request',
     description: 'Purchase order request and approval',
-    status: 'draft',
+    status: 'paused',
     createdAt: '2024-02-01T09:00:00Z',
     updatedAt: '2024-02-01T09:00:00Z',
     createdBy: 'user-1',
   },
 ];
 
-// Mock Field Definitions
+// Mock Field Definitions (now tied to object types, not processes directly)
 export const mockFieldDefinitions: FieldDefinition[] = [
   {
     id: 'field-1',
-    processId: 'process-1',
+    objectTypeId: 'object-type-1',
     name: 'invoice_number',
     label: 'Invoice Number',
     type: 'text',
@@ -97,7 +89,7 @@ export const mockFieldDefinitions: FieldDefinition[] = [
   },
   {
     id: 'field-2',
-    processId: 'process-1',
+    objectTypeId: 'object-type-1',
     name: 'amount',
     label: 'Amount ($)',
     type: 'number',
@@ -109,7 +101,7 @@ export const mockFieldDefinitions: FieldDefinition[] = [
   },
   {
     id: 'field-3',
-    processId: 'process-1',
+    objectTypeId: 'object-type-1',
     name: 'vendor_name',
     label: 'Vendor Name',
     type: 'text',
@@ -121,7 +113,7 @@ export const mockFieldDefinitions: FieldDefinition[] = [
   },
   {
     id: 'field-4',
-    processId: 'process-1',
+    objectTypeId: 'object-type-1',
     name: 'invoice_date',
     label: 'Invoice Date',
     type: 'date',
@@ -133,7 +125,7 @@ export const mockFieldDefinitions: FieldDefinition[] = [
   },
   {
     id: 'field-5',
-    processId: 'process-1',
+    objectTypeId: 'object-type-1',
     name: 'notes',
     label: 'Notes',
     type: 'textarea',
@@ -145,7 +137,7 @@ export const mockFieldDefinitions: FieldDefinition[] = [
   },
   {
     id: 'field-6',
-    processId: 'process-1',
+    objectTypeId: 'object-type-1',
     name: 'priority',
     label: 'Priority',
     type: 'select',
@@ -599,10 +591,10 @@ export function getWorkItemsForUser(userId: string): WorkItem[] {
   );
 }
 
-// Helper to get field definitions for a process
-export function getFieldDefinitionsForProcess(processId: string): FieldDefinition[] {
+// Helper to get field definitions for an object type
+export function getFieldDefinitionsForObjectType(objectTypeId: string): FieldDefinition[] {
   return mockFieldDefinitions
-    .filter((f) => f.processId === processId)
+    .filter((f) => f.objectTypeId === objectTypeId)
     .sort((a, b) => a.order - b.order);
 }
 

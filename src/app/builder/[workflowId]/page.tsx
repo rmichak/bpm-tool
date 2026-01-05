@@ -111,7 +111,11 @@ export default function WorkflowEditorPage({ params }: PageProps) {
       </div>
 
       {/* Canvas */}
-      <Canvas workflow={workflow} workflowId={workflowId} />
+      <Canvas
+        workflow={workflow}
+        workflowId={workflowId}
+        processStatus={workflow.process?.status as 'paused' | 'running' | 'archived' | undefined}
+      />
     </div>
   );
 }

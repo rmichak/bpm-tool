@@ -11,7 +11,8 @@ export class WorkflowEngine {
     workflowId: string,
     objectType: string,
     objectData: Record<string, unknown>,
-    priority: 'low' | 'normal' | 'high' | 'urgent' = 'normal'
+    priority: 'low' | 'normal' | 'high' | 'urgent' = 'normal',
+    objectTypeId?: string
   ): Promise<EngineResult> {
     // Find the BEGIN task for this workflow
     const beginTask = await prisma.task.findFirst({
@@ -46,6 +47,7 @@ export class WorkflowEngine {
         currentTaskId: beginTask.id,
         objectType,
         objectData: JSON.stringify(objectData),
+        objectTypeId: objectTypeId || null,
         status: 'active',
         priority,
         history: {

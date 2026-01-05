@@ -1,11 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import type { Task } from '@/types';
+import type { Task, Group } from '@/types';
 import { cn } from '@/lib/utils';
 import {
   X,
@@ -23,12 +23,14 @@ import {
   Merge,
   Cog,
   Layers,
+  Loader2,
 } from 'lucide-react';
-import { mockGroups } from '@/lib/mock-data';
+import { taskApi, groupApi } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 
 interface TaskConfigPanelProps {
   task: Task | null;
+  workflowId: string;
   onClose: () => void;
   onUpdate?: (task: Task) => void;
   onDelete?: (taskId: string) => void;
@@ -59,22 +61,53 @@ const mockFormFields = [
 
 export function TaskConfigPanel({
   task,
+  workflowId,
   onClose,
   onUpdate,
   onDelete,
 }: TaskConfigPanelProps) {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState('general');
+  const [saving, setSaving] = useState(false);
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [loadingGroups, setLoadingGroups] = useState(true);
+
+  // Fetch groups from API
+  useEffect(() => {
+    groupApi
+      .list()
+      .then((data) => setGroups(data as Group[]))
+      .catch((err) => console.error('Failed to load groups:', err))
+      .finally(() => setLoadingGroups(false));
+  }, []);
+
+  // Initialize state from task config
+  const taskConfig = task?.config as Record<string, unknown> | undefined;
   const [taskName, setTaskName] = useState(task?.name || '');
-  const [taskDescription, setTaskDescription] = useState(task?.description || '');
-  const [assignmentType, setAssignmentType] = useState<'user' | 'group'>('group');
-  const [selectedGroup, setSelectedGroup] = useState('');
-  const [enabledFields, setEnabledFields] = useState<Set<string>>(
-    new Set(['customer_name', 'request_type', 'description'])
+  const [taskDescription, setTaskDescription] = useState(
+    (taskConfig?.description as string) || task?.description || ''
   );
-  const [slaEnabled, setSlaEnabled] = useState(false);
-  const [slaHours, setSlaHours] = useState(24);
-  const [routeLabels, setRouteLabels] = useState(['Approve', 'Reject']);
+  const [assignmentType, setAssignmentType] = useState<'user' | 'group'>(
+    taskConfig?.assignmentType === 'user' ? 'user' : 'group'
+  );
+  const [selectedGroup, setSelectedGroup] = useState(
+    (taskConfig?.groupId as string) || ''
+  );
+  const [selectedUser, setSelectedUser] = useState(
+    (taskConfig?.userId as string) || ''
+  );
+  const [enabledFields, setEnabledFields] = useState<Set<string>>(
+    new Set((taskConfig?.visibleFields as string[]) || ['customer_name', 'request_type', 'description'])
+  );
+  const [slaEnabled, setSlaEnabled] = useState(
+    (taskConfig?.slaEnabled as boolean) || false
+  );
+  const [slaHours, setSlaHours] = useState(
+    (taskConfig?.slaHours as number) || 24
+  );
+  const [routeLabels, setRouteLabels] = useState(
+    (taskConfig?.routeLabels as string[]) || ['Approve', 'Reject']
+  );
 
   if (!task) return null;
 
@@ -92,12 +125,55 @@ export function TaskConfigPanel({
     setEnabledFields(newEnabled);
   };
 
-  const handleSave = () => {
-    toast({
-      title: 'Task Updated',
-      description: `"${taskName}" has been updated. (Mockup)`,
-      variant: 'success',
-    });
+  const handleSave = async () => {
+    if (!task) return;
+
+    setSaving(true);
+    try {
+      // Build updated config
+      const updatedConfig = {
+        ...taskConfig,
+        type: task.type,
+        assignmentType,
+        groupId: assignmentType === 'group' ? selectedGroup : undefined,
+        userId: assignmentType === 'user' ? selectedUser : undefined,
+        visibleFields: Array.from(enabledFields),
+        slaEnabled,
+        slaHours: slaEnabled ? slaHours : undefined,
+        routeLabels: task.type === 'decision' ? routeLabels : undefined,
+      };
+
+      await taskApi.update(workflowId, task.id, {
+        name: taskName,
+        description: taskDescription,
+        config: updatedConfig,
+      });
+
+      toast({
+        title: 'Task Updated',
+        description: `"${taskName}" has been saved.`,
+        variant: 'success',
+      });
+
+      // Call onUpdate if provided
+      if (onUpdate) {
+        onUpdate({
+          ...task,
+          name: taskName,
+          description: taskDescription,
+          config: updatedConfig as Task['config'],
+        });
+      }
+    } catch (error) {
+      console.error('Failed to save task:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to save task configuration.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleDelete = () => {
@@ -251,18 +327,25 @@ export function TaskConfigPanel({
             {assignmentType === 'group' && (
               <div className="space-y-2">
                 <label className="text-sm font-medium">Select Group</label>
-                <select
-                  value={selectedGroup}
-                  onChange={(e) => setSelectedGroup(e.target.value)}
-                  className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                >
-                  <option value="">Select a group...</option>
-                  {mockGroups.map((group) => (
-                    <option key={group.id} value={group.id}>
-                      {group.name}
-                    </option>
-                  ))}
-                </select>
+                {loadingGroups ? (
+                  <div className="flex items-center gap-2 h-10 px-3 text-muted-foreground text-sm">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading groups...
+                  </div>
+                ) : (
+                  <select
+                    value={selectedGroup}
+                    onChange={(e) => setSelectedGroup(e.target.value)}
+                    className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  >
+                    <option value="">Select a group...</option>
+                    {groups.map((group) => (
+                      <option key={group.id} value={group.id}>
+                        {group.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
                 <p className="text-xs text-muted-foreground">
                   Work items will be added to the selected group queue for any
                   member to claim.
@@ -273,7 +356,11 @@ export function TaskConfigPanel({
             {assignmentType === 'user' && (
               <div className="space-y-2">
                 <label className="text-sm font-medium">Select User</label>
-                <select className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                <select
+                  value={selectedUser}
+                  onChange={(e) => setSelectedUser(e.target.value)}
+                  className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                >
                   <option value="">Select a user...</option>
                   <option value="john">John Smith</option>
                   <option value="sarah">Sarah Connor</option>
@@ -412,9 +499,13 @@ export function TaskConfigPanel({
           <Trash2 className="h-4 w-4 mr-2" />
           Delete
         </Button>
-        <Button size="sm" onClick={handleSave}>
-          <Save className="h-4 w-4 mr-2" />
-          Save Changes
+        <Button size="sm" onClick={handleSave} disabled={saving}>
+          {saving ? (
+            <span className="h-4 w-4 mr-2 animate-spin rounded-full border-2 border-current border-t-transparent" />
+          ) : (
+            <Save className="h-4 w-4 mr-2" />
+          )}
+          {saving ? 'Saving...' : 'Save Changes'}
         </Button>
       </div>
     </div>

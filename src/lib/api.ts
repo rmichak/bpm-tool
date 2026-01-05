@@ -66,7 +66,7 @@ export const taskApi = {
       body: JSON.stringify(data),
     }).then(handleResponse),
 
-  update: (workflowId: string, taskId: string, data: { name?: string; position?: { x: number; y: number }; config?: object }) =>
+  update: (workflowId: string, taskId: string, data: { name?: string; description?: string; position?: { x: number; y: number }; config?: object }) =>
     fetch(`${API_BASE}/workflows/${workflowId}/tasks/${taskId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },

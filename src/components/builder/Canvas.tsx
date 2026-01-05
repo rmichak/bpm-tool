@@ -31,8 +31,10 @@ import { Breadcrumbs, BreadcrumbItem } from './Breadcrumbs';
 import { ProcessTree, ProcessTreeNode } from './ProcessTree';
 import { SimulationPanel } from './SimulationPanel';
 import { useSimulation } from '@/hooks/useSimulation';
+import { useRealMetrics } from '@/hooks/useRealMetrics';
 import { taskApi, routeApi } from '@/lib/api';
-import type { Task, Route, TaskType, WorkflowDetail, TaskMetrics } from '@/types';
+import type { Task, Route, TaskType, WorkflowDetail, TaskMetrics, ComparisonOperator } from '@/types';
+import { RouteConditionEditor, type RouteCondition, formatConditionsBadge } from './RouteConditionEditor';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
@@ -50,6 +52,8 @@ import {
   Gamepad2,
   Palette,
   FolderTree,
+  Eye,
+  RefreshCw,
 } from 'lucide-react';
 
 interface TaskNodeData extends Record<string, unknown> {
@@ -68,6 +72,7 @@ interface TaskNodeData extends Record<string, unknown> {
 interface CanvasProps {
   workflow: WorkflowDetail;
   workflowId: string;
+  processStatus?: 'paused' | 'running' | 'archived';
   onSave?: (tasks: Task[], routes: Route[]) => void;
 }
 
@@ -119,17 +124,37 @@ function tasksToNodes(
 }
 
 function routesToEdges(routes: Route[]): Edge[] {
-  return routes.map((route) => ({
-    id: route.id,
-    source: route.sourceTaskId,
-    target: route.targetTaskId,
-    label: route.label || undefined,
-    type: 'animated',
-    animated: false,
-    style: { strokeWidth: 2 },
-    labelStyle: { fontSize: 12, fontWeight: 500 },
-    labelBgStyle: { fill: 'hsl(var(--card))', fillOpacity: 0.95 },
-  }));
+  return routes.map((route) => {
+    // Parse conditions from route
+    const condition = (route as any).condition;
+    let conditions: RouteCondition[] = [];
+    if (condition) {
+      if (Array.isArray(condition)) {
+        conditions = condition;
+      } else if (condition.conditions && Array.isArray(condition.conditions)) {
+        conditions = condition.conditions;
+      }
+    }
+
+    // Build label: route label + condition badge
+    const conditionBadge = formatConditionsBadge(conditions);
+    let label = route.label || '';
+    if (conditionBadge) {
+      label = label ? `${label} [${conditionBadge}]` : `[${conditionBadge}]`;
+    }
+
+    return {
+      id: route.id,
+      source: route.sourceTaskId,
+      target: route.targetTaskId,
+      label: label || undefined,
+      type: 'animated',
+      animated: false,
+      style: { strokeWidth: 2 },
+      labelStyle: { fontSize: 12, fontWeight: 500 },
+      labelBgStyle: { fill: 'hsl(var(--card))', fillOpacity: 0.95 },
+    };
+  });
 }
 
 function CanvasDropZone({ children }: { children: React.ReactNode }) {
@@ -154,16 +179,22 @@ function CanvasDropZone({ children }: { children: React.ReactNode }) {
 
 type SidebarView = 'palette' | 'tree';
 
-export function Canvas({ workflow, workflowId, onSave }: CanvasProps) {
+export function Canvas({ workflow, workflowId, processStatus, onSave }: CanvasProps) {
   const { toast } = useToast();
   const [sidebarView, setSidebarView] = useState<SidebarView>('palette');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [showGrid, setShowGrid] = useState(true);
   const [showSimulation, setShowSimulation] = useState(true);
+  const [refreshInterval, setRefreshInterval] = useState(30000); // 30 seconds default
+  const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
+  const [showRouteEditor, setShowRouteEditor] = useState(false);
   const [breadcrumbPath, setBreadcrumbPath] = useState<BreadcrumbItem[]>([
     { id: workflow.id, name: workflow.name, workflowId: workflow.id },
   ]);
+
+  // Determine if we're in view mode (process is active)
+  const isViewMode = processStatus === 'running';
 
   // Track pending position updates to debounce API calls
   const pendingPositionUpdates = useRef<Map<string, { x: number; y: number }>>(new Map());
@@ -202,11 +233,17 @@ export function Canvas({ workflow, workflowId, onSave }: CanvasProps) {
     };
   }, [workflow]);
 
-  // Initialize simulation
+  // Initialize simulation (for edit mode)
   const simulation = useSimulation({
     tasks: workflow.tasks,
     routes: workflow.routes,
   });
+
+  // Initialize real metrics (for view mode)
+  const realMetrics = useRealMetrics(workflowId, isViewMode, refreshInterval);
+
+  // Use real metrics in view mode, simulation metrics in edit mode
+  const activeMetrics = isViewMode ? realMetrics.metrics : simulation.metrics;
 
   const handleNodeSelect = useCallback((taskId: string) => {
     setSelectedTaskId(taskId);
@@ -240,9 +277,58 @@ export function Canvas({ workflow, workflowId, onSave }: CanvasProps) {
     }
   }, [breadcrumbPath, toast]);
 
+  // Handle edge click to open route editor
+  const handleEdgeClick = useCallback((event: React.MouseEvent, edge: Edge) => {
+    setSelectedRouteId(edge.id);
+    setShowRouteEditor(true);
+  }, []);
+
+  // Get selected route data
+  const selectedRoute = useMemo(() => {
+    if (!selectedRouteId) return null;
+    return workflow.routes.find((r) => r.id === selectedRouteId) || null;
+  }, [selectedRouteId, workflow.routes]);
+
+  // Parse conditions from route
+  const getRouteConditions = useCallback((route: Route | null): RouteCondition[] => {
+    if (!route) return [];
+    // Route condition is stored as JSON object with conditions array
+    const condition = (route as any).condition;
+    if (!condition) return [];
+    if (Array.isArray(condition)) return condition;
+    if (condition.conditions && Array.isArray(condition.conditions)) return condition.conditions;
+    return [];
+  }, []);
+
+  // Save route conditions
+  const handleSaveRouteConditions = useCallback(async (
+    routeId: string,
+    label: string,
+    conditions: RouteCondition[]
+  ) => {
+    try {
+      await routeApi.update(workflowId, routeId, {
+        label: label || undefined,
+        condition: conditions.length > 0 ? { conditions } : undefined,
+      });
+      toast({
+        title: 'Route Updated',
+        description: 'Route conditions saved successfully',
+      });
+      // Trigger a refresh - in a real app, you'd update local state
+      window.location.reload();
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to save route conditions',
+        variant: 'destructive',
+      });
+    }
+  }, [workflowId, toast]);
+
   const initialNodes = useMemo(
-    () => tasksToNodes(workflow.tasks, handleNodeSelect, handleDrillDown, simulation.metrics),
-    [workflow.tasks, handleNodeSelect, handleDrillDown, simulation.metrics]
+    () => tasksToNodes(workflow.tasks, handleNodeSelect, handleDrillDown, activeMetrics),
+    [workflow.tasks, handleNodeSelect, handleDrillDown, activeMetrics]
   );
   const initialEdges = useMemo(
     () => routesToEdges(workflow.routes),
@@ -269,6 +355,15 @@ export function Canvas({ workflow, workflowId, onSave }: CanvasProps) {
   // Custom onNodesChange that persists position changes
   const onNodesChange = useCallback(
     (changes: NodeChange<Node<TaskNodeData>>[]) => {
+      // In view mode, only allow selection changes
+      if (isViewMode) {
+        const selectionChanges = changes.filter((c) => c.type === 'select');
+        if (selectionChanges.length > 0) {
+          setNodes((nds) => applyNodeChanges(selectionChanges, nds));
+        }
+        return;
+      }
+
       // Apply changes locally first
       setNodes((nds) => applyNodeChanges(changes, nds));
 
@@ -298,12 +393,15 @@ export function Canvas({ workflow, workflowId, onSave }: CanvasProps) {
         }
       });
     },
-    [workflowId, setNodes, flushPositionUpdates, toast]
+    [workflowId, setNodes, flushPositionUpdates, toast, isViewMode]
   );
 
   // Custom onEdgesChange that persists edge deletions
   const onEdgesChange = useCallback(
     (changes: EdgeChange<Edge>[]) => {
+      // In view mode, ignore all edge changes
+      if (isViewMode) return;
+
       // Apply changes locally first
       setEdges((eds) => applyEdgeChanges(changes, eds));
 
@@ -321,14 +419,14 @@ export function Canvas({ workflow, workflowId, onSave }: CanvasProps) {
         }
       });
     },
-    [workflowId, setEdges, toast]
+    [workflowId, setEdges, toast, isViewMode]
   );
 
-  // Update node metrics when simulation changes
+  // Update node metrics when metrics change (either simulation or real)
   useEffect(() => {
     setNodes((currentNodes) =>
       currentNodes.map((node) => {
-        const metrics = simulation.metrics.get(node.id);
+        const metrics = activeMetrics.get(node.id);
         return {
           ...node,
           data: {
@@ -338,7 +436,7 @@ export function Canvas({ workflow, workflowId, onSave }: CanvasProps) {
         };
       })
     );
-  }, [simulation.metrics, setNodes]);
+  }, [activeMetrics, setNodes]);
 
   // Get selected task
   const selectedTask = useMemo(() => {
@@ -349,6 +447,9 @@ export function Canvas({ workflow, workflowId, onSave }: CanvasProps) {
 
   const onConnect = useCallback(
     (params: Connection) => {
+      // In view mode, don't allow connections
+      if (isViewMode) return;
+
       if (!params.source || !params.target) return;
 
       // Generate a temporary ID for optimistic update
@@ -391,11 +492,14 @@ export function Canvas({ workflow, workflowId, onSave }: CanvasProps) {
           });
         });
     },
-    [workflowId, setEdges, toast]
+    [workflowId, setEdges, toast, isViewMode]
   );
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
+      // In view mode, don't allow adding tasks
+      if (isViewMode) return;
+
       const { active, over } = event;
 
       if (!over || over.id !== 'canvas-drop-zone') return;
@@ -475,7 +579,7 @@ export function Canvas({ workflow, workflowId, onSave }: CanvasProps) {
           });
         });
     },
-    [workflowId, nodes.length, setNodes, handleNodeSelect, toast]
+    [workflowId, nodes.length, setNodes, handleNodeSelect, toast, isViewMode]
   );
 
   const handleSave = useCallback(() => {
@@ -561,8 +665,8 @@ export function Canvas({ workflow, workflowId, onSave }: CanvasProps) {
       <div className="flex h-[calc(100vh-8rem)]">
         {/* Sidebar with view toggle */}
         <div className="flex flex-col">
-          {/* View toggle tabs (only when not collapsed) */}
-          {!sidebarCollapsed && (
+          {/* View toggle tabs (only when not collapsed and not in view mode) */}
+          {!sidebarCollapsed && !isViewMode && (
             <div className="flex border-b border-border bg-card/50">
               <button
                 onClick={() => setSidebarView('palette')}
@@ -589,8 +693,18 @@ export function Canvas({ workflow, workflowId, onSave }: CanvasProps) {
             </div>
           )}
 
-          {/* Sidebar content */}
-          {sidebarView === 'palette' ? (
+          {/* Sidebar content - in view mode only show tree */}
+          {isViewMode ? (
+            <ProcessTree
+              tree={processTree}
+              currentWorkflowId={breadcrumbPath[breadcrumbPath.length - 1]?.workflowId || workflow.id}
+              currentTaskId={selectedTaskId || undefined}
+              onNavigate={handleBreadcrumbNavigate}
+              onSelectTask={handleNodeSelect}
+              collapsed={sidebarCollapsed}
+              onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
+            />
+          ) : sidebarView === 'palette' ? (
             <TaskPalette
               collapsed={sidebarCollapsed}
               onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
@@ -622,25 +736,39 @@ export function Canvas({ workflow, workflowId, onSave }: CanvasProps) {
             <div className="flex items-center gap-4">
               {/* Workflow name */}
               <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  defaultValue={workflow.name}
-                  className="font-semibold text-lg bg-transparent border-none focus:outline-none focus:ring-0 w-auto"
-                  style={{ width: `${workflow.name.length + 2}ch` }}
-                />
+                {isViewMode ? (
+                  <span className="font-semibold text-lg">{workflow.name}</span>
+                ) : (
+                  <input
+                    type="text"
+                    defaultValue={workflow.name}
+                    className="font-semibold text-lg bg-transparent border-none focus:outline-none focus:ring-0 w-auto"
+                    style={{ width: `${workflow.name.length + 2}ch` }}
+                  />
+                )}
                 <Badge variant="outline" className="text-xs">
                   v{workflow.version}
                 </Badge>
-                <Badge
-                  variant="secondary"
-                  className={
-                    workflow.status === 'published'
-                      ? 'bg-success/10 text-success border-success/20'
-                      : 'bg-warning/10 text-warning border-warning/20'
-                  }
-                >
-                  {workflow.status}
-                </Badge>
+                {isViewMode ? (
+                  <Badge
+                    variant="secondary"
+                    className="bg-primary/10 text-primary border-primary/20 gap-1"
+                  >
+                    <Eye className="h-3 w-3" />
+                    View Mode
+                  </Badge>
+                ) : (
+                  <Badge
+                    variant="secondary"
+                    className={
+                      workflow.status === 'published'
+                        ? 'bg-success/10 text-success border-success/20'
+                        : 'bg-warning/10 text-warning border-warning/20'
+                    }
+                  >
+                    {workflow.status}
+                  </Badge>
+                )}
               </div>
 
               <div className="w-px h-6 bg-border" />
@@ -649,6 +777,20 @@ export function Canvas({ workflow, workflowId, onSave }: CanvasProps) {
               <span className="text-sm text-muted-foreground">
                 {nodes.length} tasks · {edges.length} connections
               </span>
+
+              {/* Real metrics loading/error indicator */}
+              {isViewMode && (
+                <>
+                  <div className="w-px h-6 bg-border" />
+                  {realMetrics.loading ? (
+                    <span className="text-sm text-muted-foreground">Loading metrics...</span>
+                  ) : realMetrics.error ? (
+                    <span className="text-sm text-destructive">Error: {realMetrics.error}</span>
+                  ) : (
+                    <span className="text-sm text-success">Live metrics</span>
+                  )}
+                </>
+              )}
             </div>
 
             <div className="flex items-center gap-2">
@@ -663,53 +805,87 @@ export function Canvas({ workflow, workflowId, onSave }: CanvasProps) {
                 >
                   <Grid3X3 className="h-4 w-4" />
                 </Button>
-                <Button
-                  variant={showSimulation ? 'secondary' : 'ghost'}
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => setShowSimulation(!showSimulation)}
-                  title="Toggle simulation panel"
-                >
-                  <Gamepad2 className="h-4 w-4" />
-                </Button>
+                {!isViewMode && (
+                  <Button
+                    variant={showSimulation ? 'secondary' : 'ghost'}
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => setShowSimulation(!showSimulation)}
+                    title="Toggle simulation panel"
+                  >
+                    <Gamepad2 className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
 
               <div className="w-px h-6 bg-border" />
 
-              {/* History */}
-              <Button variant="ghost" size="icon" className="h-8 w-8" disabled>
-                <Undo className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8" disabled>
-                <Redo className="h-4 w-4" />
-              </Button>
+              {isViewMode ? (
+                /* View mode actions */
+                <div className="flex items-center gap-2">
+                  <select
+                    value={refreshInterval}
+                    onChange={(e) => setRefreshInterval(Number(e.target.value))}
+                    className="h-8 px-2 text-xs rounded-md border border-input bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                    title="Auto-refresh interval"
+                  >
+                    <option value={5000}>5s</option>
+                    <option value={10000}>10s</option>
+                    <option value={15000}>15s</option>
+                    <option value={30000}>30s</option>
+                    <option value={60000}>1m</option>
+                    <option value={0}>Off</option>
+                  </select>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    onClick={() => realMetrics.refresh()}
+                    disabled={realMetrics.loading}
+                  >
+                    <RefreshCw className={`h-4 w-4 ${realMetrics.loading ? 'animate-spin' : ''}`} />
+                    Refresh
+                  </Button>
+                </div>
+              ) : (
+                /* Edit mode actions */
+                <>
+                  {/* History */}
+                  <Button variant="ghost" size="icon" className="h-8 w-8" disabled>
+                    <Undo className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-8 w-8" disabled>
+                    <Redo className="h-4 w-4" />
+                  </Button>
 
-              <div className="w-px h-6 bg-border" />
+                  <div className="w-px h-6 bg-border" />
 
-              {/* Actions */}
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-2"
-                onClick={handleValidate}
-              >
-                <CheckCircle className="h-4 w-4" />
-                Validate
-              </Button>
+                  {/* Actions */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    onClick={handleValidate}
+                  >
+                    <CheckCircle className="h-4 w-4" />
+                    Validate
+                  </Button>
 
-              <Button size="sm" className="gap-2" onClick={handleSave}>
-                <Save className="h-4 w-4" />
-                Save
-              </Button>
+                  <Button size="sm" className="gap-2" onClick={handleSave}>
+                    <Save className="h-4 w-4" />
+                    Save
+                  </Button>
 
-              <Button
-                variant="default"
-                size="sm"
-                className="gap-2 bg-success hover:bg-success/90"
-              >
-                <Play className="h-4 w-4" />
-                Publish
-              </Button>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="gap-2 bg-success hover:bg-success/90"
+                  >
+                    <Play className="h-4 w-4" />
+                    Publish
+                  </Button>
+                </>
+              )}
             </div>
           </div>
 
@@ -730,9 +906,16 @@ export function Canvas({ workflow, workflowId, onSave }: CanvasProps) {
               snapToGrid
               snapGrid={[20, 20]}
               className="bg-background"
-              deleteKeyCode={['Backspace', 'Delete']}
+              deleteKeyCode={isViewMode ? null : ['Backspace', 'Delete']}
+              nodesDraggable={!isViewMode}
+              nodesConnectable={!isViewMode}
+              elementsSelectable={true}
               onNodeClick={(_, node) => setSelectedTaskId(node.id)}
-              onPaneClick={() => setSelectedTaskId(null)}
+              onEdgeClick={handleEdgeClick}
+              onPaneClick={() => {
+                setSelectedTaskId(null);
+                setSelectedRouteId(null);
+              }}
             >
               {showGrid && (
                 <Background
@@ -759,18 +942,19 @@ export function Canvas({ workflow, workflowId, onSave }: CanvasProps) {
           </CanvasDropZone>
         </div>
 
-        {/* Config Panel */}
+        {/* Config Panel - in view mode, hide delete option */}
         {selectedTask && (
           <TaskConfigPanel
             task={selectedTask}
+            workflowId={workflowId}
             onClose={() => setSelectedTaskId(null)}
-            onDelete={handleDeleteTask}
+            onDelete={isViewMode ? undefined : handleDeleteTask}
           />
         )}
       </div>
 
-      {/* Simulation Panel */}
-      {showSimulation && (
+      {/* Simulation Panel - only show in edit mode */}
+      {!isViewMode && showSimulation && (
         <SimulationPanel
           isRunning={simulation.isRunning}
           speed={simulation.speed}
@@ -787,6 +971,17 @@ export function Canvas({ workflow, workflowId, onSave }: CanvasProps) {
           onAgeAllItems={simulation.ageAllItems}
         />
       )}
+
+      {/* Route Condition Editor */}
+      <RouteConditionEditor
+        open={showRouteEditor}
+        onOpenChange={setShowRouteEditor}
+        routeId={selectedRouteId || ''}
+        routeLabel={selectedRoute?.label || null}
+        conditions={getRouteConditions(selectedRoute)}
+        onSave={handleSaveRouteConditions}
+        readOnly={isViewMode}
+      />
     </DndContext>
   );
 }

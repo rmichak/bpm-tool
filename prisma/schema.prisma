@@ -12,13 +12,44 @@ datasource db {
 }
 
 model Process {
-  id          String     @id @default(cuid())
+  id          String       @id @default(cuid())
   name        String
   description String?
-  status      String     @default("draft") // draft, active, archived
+  status      String       @default("paused") // paused, running, archived
   workflows   Workflow[]
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  objectTypes ObjectType[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model ObjectType {
+  id          String            @id @default(cuid())
+  processId   String
+  process     Process           @relation(fields: [processId], references: [id], onDelete: Cascade)
+  name        String            // "Invoice", "Purchase Order"
+  description String?
+  fields      FieldDefinition[]
+  workItems   WorkItem[]
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@unique([processId, name])
+}
+
+model FieldDefinition {
+  id           String     @id @default(cuid())
+  objectTypeId String
+  objectType   ObjectType @relation(fields: [objectTypeId], references: [id], onDelete: Cascade)
+  name         String     // Field key: "invoiceNumber", "amount"
+  label        String     // Display label: "Invoice Number", "Amount"
+  type         String     // "text", "number", "date", "select", "checkbox", "textarea"
+  required     Boolean    @default(false)
+  order        Int        @default(0)
+  config       String     @default("{}") // JSON: validation config (min, max, pattern, options, etc.)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([objectTypeId, name])
 }
 
 model Workflow {
@@ -96,30 +127,32 @@ model UserGroup {
 }
 
 model WorkItem {
-  id            String    @id @default(cuid())
+  id            String      @id @default(cuid())
   workflowId    String
-  workflow      Workflow  @relation(fields: [workflowId], references: [id])
+  workflow      Workflow    @relation(fields: [workflowId], references: [id])
   currentTaskId String
-  currentTask   Task      @relation(fields: [currentTaskId], references: [id])
+  currentTask   Task        @relation(fields: [currentTaskId], references: [id])
 
   // Business object (embedded metadata)
-  objectType    String    // "invoice", "purchase_order", etc.
-  objectData    String    // JSON: the actual business object fields
+  objectType    String      // "invoice", "purchase_order", etc.
+  objectData    String      // JSON: the actual business object fields
+  objectTypeId  String?     // Optional FK to ObjectType definition
+  objectTypeRef ObjectType? @relation(fields: [objectTypeId], references: [id])
 
   // Status tracking
-  status        String    @default("active") // active, completed, cancelled
-  priority      String    @default("normal") // low, normal, high, urgent
+  status        String      @default("active") // active, completed, cancelled
+  priority      String      @default("normal") // low, normal, high, urgent
 
   // Assignment
   claimedById   String?
-  claimedBy     User?     @relation("ClaimedItems", fields: [claimedById], references: [id])
+  claimedBy     User?       @relation("ClaimedItems", fields: [claimedById], references: [id])
   claimedAt     DateTime?
 
   // Audit trail
   history       WorkItemHistory[]
 
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 }
 
 model WorkItemHistory {

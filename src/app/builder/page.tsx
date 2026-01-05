@@ -107,9 +107,9 @@ export default function BuilderPage() {
                     </div>
                     <Badge
                       variant={
-                        process.status === 'active'
+                        process.status === 'running'
                           ? 'success'
-                          : process.status === 'draft'
+                          : process.status === 'paused'
                           ? 'secondary'
                           : 'outline'
                       }

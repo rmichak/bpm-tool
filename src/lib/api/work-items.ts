@@ -166,12 +166,13 @@ export const workItemApi = {
     workflowId: string,
     objectType: string,
     objectData: Record<string, unknown>,
-    priority: string = 'normal'
+    priority: string = 'normal',
+    objectTypeId?: string
   ): Promise<StartWorkflowResult> {
     const res = await fetch(`/api/workflows/${workflowId}/start`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ objectType, objectData, priority }),
+      body: JSON.stringify({ objectType, objectData, priority, objectTypeId }),
     })
     if (!res.ok) {
       const error = await res.json()

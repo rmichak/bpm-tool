@@ -35,14 +35,20 @@ export async function PUT(
   try {
     const { taskId } = await params
     const body = await request.json()
-    const { name, position, config } = body
+    const { name, description, position, config } = body
+
+    // If description is provided, merge it into config since Task model doesn't have description field
+    let finalConfig = config
+    if (description !== undefined && config) {
+      finalConfig = { ...config, description }
+    }
 
     const task = await prisma.task.update({
       where: { id: taskId },
       data: {
         ...(name && { name }),
         ...(position && { position: JSON.stringify(position) }),
-        ...(config && { config: JSON.stringify(config) }),
+        ...(finalConfig && { config: JSON.stringify(finalConfig) }),
       },
     })
 

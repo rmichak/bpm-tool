@@ -1,5 +1,5 @@
 // Process Types
-export type ProcessStatus = 'draft' | 'active' | 'archived';
+export type ProcessStatus = 'paused' | 'running' | 'archived';
 
 export interface Process {
   id: string;
@@ -139,12 +139,23 @@ export interface Route {
   createdAt: string;
 }
 
+// Object Type
+export interface ObjectType {
+  id: string;
+  processId: string;
+  name: string;
+  description: string | null;
+  fields: FieldDefinition[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 // Field Definition Types
 export type FieldType = 'text' | 'number' | 'date' | 'select' | 'checkbox' | 'textarea';
 
 export interface FieldDefinition {
   id: string;
-  processId: string;
+  objectTypeId: string;
   name: string;
   label: string;
   type: FieldType;
@@ -206,10 +217,8 @@ export type UserStatus = 'active' | 'inactive';
 export interface User {
   id: string;
   email: string;
-  displayName: string;
-  avatarUrl: string | null;
+  name: string;
   role: UserRole;
-  status: UserStatus;
   createdAt: string;
 }
 
@@ -217,9 +226,8 @@ export interface User {
 export interface Group {
   id: string;
   name: string;
-  description: string;
+  description: string | null;
   createdAt: string;
-  updatedAt: string;
 }
 
 export interface GroupMembership {

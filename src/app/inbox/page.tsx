@@ -153,15 +153,17 @@ export default function InbasketPage() {
   const handleStartWorkflow = async (
     workflowId: string,
     objectType: string,
-    objectData: Record<string, string>,
-    priority: string
+    objectData: Record<string, unknown>,
+    priority: string,
+    objectTypeId?: string
   ) => {
     try {
       const result = await workItemApi.startWorkflow(
         workflowId,
         objectType,
         objectData,
-        priority
+        priority,
+        objectTypeId
       )
       toast({
         title: 'Workflow Started',
@@ -575,7 +577,13 @@ export default function InbasketPage() {
         onOpenChange={setShowAssignDialog}
         groupIds={
           selectedItemForAssign
-            ? ((selectedItemForAssign.currentTask.config as Record<string, unknown>)?.groupIds as string[]) || []
+            ? (() => {
+                const config = selectedItemForAssign.currentTask.config as Record<string, unknown>;
+                // Support both groupIds (array) and groupId (single string)
+                if (config?.groupIds) return config.groupIds as string[];
+                if (config?.groupId) return [config.groupId as string];
+                return [];
+              })()
             : []
         }
         onAssign={handleAssign}

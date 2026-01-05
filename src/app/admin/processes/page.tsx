@@ -33,9 +33,12 @@ import {
   Loader2,
   Play,
   Pause,
+  Eye,
+  FileType,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
+import { ObjectTypesManager } from '@/components/admin/ObjectTypesManager'
 
 interface Workflow {
   id: string
@@ -55,8 +58,8 @@ interface Process {
 }
 
 const statusColors: Record<string, string> = {
-  active: 'bg-success/10 text-success border-success/20',
-  draft: 'bg-warning/10 text-warning border-warning/20',
+  running: 'bg-success/10 text-success border-success/20',
+  paused: 'bg-warning/10 text-warning border-warning/20',
   archived: 'bg-muted text-muted-foreground',
 }
 
@@ -66,6 +69,7 @@ export default function ProcessesPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
   const [searchQuery, setSearchQuery] = useState('')
+  const [objectTypesProcess, setObjectTypesProcess] = useState<Process | null>(null)
 
   const loadProcesses = useCallback(async () => {
     try {
@@ -250,23 +254,29 @@ export default function ProcessesPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            {process.status === 'draft' && (
+                            {process.status === 'paused' && (
                               <DropdownMenuItem
-                                onClick={() => handleStatusChange(process.id, 'active', process.name)}
+                                onClick={() => handleStatusChange(process.id, 'running', process.name)}
                                 className="text-success"
                               >
                                 <Play className="h-4 w-4 mr-2" />
-                                Activate
+                                Start
                               </DropdownMenuItem>
                             )}
-                            {process.status === 'active' && (
+                            {process.status === 'running' && (
                               <DropdownMenuItem
-                                onClick={() => handleStatusChange(process.id, 'draft', process.name)}
+                                onClick={() => handleStatusChange(process.id, 'paused', process.name)}
                               >
                                 <Pause className="h-4 w-4 mr-2" />
-                                Deactivate
+                                Pause
                               </DropdownMenuItem>
                             )}
+                            <DropdownMenuItem
+                              onClick={() => setObjectTypesProcess(process)}
+                            >
+                              <FileType className="h-4 w-4 mr-2" />
+                              Object Types
+                            </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => handleAction('Edit', process.name)}
                             >
@@ -342,8 +352,17 @@ export default function ProcessesPage() {
                                     </div>
                                     <Link href={`/builder/${workflow.id}`}>
                                       <Button variant="ghost" size="sm" className="gap-2">
-                                        <ExternalLink className="h-4 w-4" />
-                                        Edit
+                                        {process.status === 'running' ? (
+                                          <>
+                                            <Eye className="h-4 w-4" />
+                                            View
+                                          </>
+                                        ) : (
+                                          <>
+                                            <ExternalLink className="h-4 w-4" />
+                                            Edit
+                                          </>
+                                        )}
                                       </Button>
                                     </Link>
                                   </div>
@@ -369,6 +388,18 @@ export default function ProcessesPage() {
         </Table>
         )}
       </div>
+
+      {/* Object Types Manager Dialog */}
+      {objectTypesProcess && (
+        <ObjectTypesManager
+          processId={objectTypesProcess.id}
+          processName={objectTypesProcess.name}
+          open={!!objectTypesProcess}
+          onOpenChange={(open) => {
+            if (!open) setObjectTypesProcess(null)
+          }}
+        />
+      )}
     </div>
   )
 }
